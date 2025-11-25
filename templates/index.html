@@ -98,6 +98,274 @@
 
 <!--内容结束-->
 
+<!-- 以下是杰哥的新增内容 -->
+
+<!-- 右侧固定按钮 -->
+<div id="right-fixed-btn">小助手</div>
+
+<!-- 悬浮窗（初始隐藏） -->
+<div id="popup-mask"></div>
+<div id="popup-window">
+    <div id="popup-close">×</div>
+    <div class="popup-content">
+    <h3>ai课程学习助手</h3>
+    <div id="ai-chat">
+        <div id="chat-messages"></div>
+
+        <div id="chat-input-area">
+            <input id="chat-input" type="text" placeholder="请输入内容..." />
+            <button id="chat-send-btn">发送</button>
+        </div>
+    </div>
+
+</div>
+</div>
+
+<script>
+$(function () {
+    // 点击右侧按钮显示悬浮窗
+    $("#right-fixed-btn").click(function () {
+        $("#popup-window").fadeIn(200);
+        $("#popup-mask").fadeIn(200);
+    });
+
+    // 点击关闭按钮隐藏
+    $("#popup-close").click(function () {
+        $("#popup-window").fadeOut(200);
+        $("#popup-mask").fadeOut(200);
+    });
+
+    // 点击空白处关闭
+    $("#popup-mask").click(function () {
+        $("#popup-window").fadeOut(200);
+        $("#popup-mask").fadeOut(200);
+    });
+});
+</script>
+
+<script>
+$(function() {
+
+    // 发送消息
+    $("#chat-send-btn").click(function () {
+        sendMessage();
+    });
+
+    // 回车发送
+    $("#chat-input").keypress(function(e) {
+        if (e.which == 13) {
+            sendMessage();
+        }
+    });
+
+    function sendMessage() {
+        let text = $("#chat-input").val().trim();
+        if (!text) return;
+
+        // 显示用户消息
+        $("#chat-messages").append(`
+            <div class="msg user-msg">${text}</div>
+        `);
+        $("#chat-input").val("");
+        scrollToBottom();
+
+        // 请求后端
+        $.ajax({
+            url: "/api/deepseek_chat",
+            type: "POST",
+            contentType: "application/json",
+            data: JSON.stringify({ message: text }),
+            success: function(res) {
+                $("#chat-messages").append(`
+                    <div class="msg bot-msg">${res.reply}</div>
+                `);
+                scrollToBottom();
+            },
+            error: function() {
+                $("#chat-messages").append(`
+                    <div class="msg bot-msg">请求失败，请稍后再试。</div>
+                `);
+                scrollToBottom();
+            }
+        });
+    }
+
+    function scrollToBottom() {
+        let box = document.getElementById("chat-messages");
+        box.scrollTop = box.scrollHeight;
+    }
+});
+</script>
+
+
+<style>
+/* 右侧按钮 */
+#right-fixed-btn {
+    position: fixed;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 60px;
+    height: 60px;
+    background: #3498db;
+    color: #fff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 9999;
+    font-size: 14px;
+}
+
+/* 遮罩层 */
+#popup-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: none;
+    z-index: 9998;
+}
+
+/* 悬浮窗 */
+#popup-window {
+    position: fixed;
+    top: 50%;
+    left: 12.5%;
+    transform: translateY(-50%);
+    width: 75%;
+    height: 75%;
+    background: #fff;
+    border-radius: 8px;
+    padding: 20px;
+    display: none;
+    z-index: 9999;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+/* 关闭按钮 */
+#popup-close {
+    position: absolute;
+    right: 10px;
+    top: 5px;
+    cursor: pointer;
+    font-size: 20px;
+}
+
+/* ai对话 */
+
+/* ai chat 区域布局 */
+#ai-chat {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 消息显示区 */
+#chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    border: 1px solid #dcdcdc;
+    border-radius: 6px;
+    background: #fafafa;
+}
+
+/* 单条消息 */
+.msg {
+    max-width: 70%;
+    padding: 10px;
+    margin: 8px 0;
+    border-radius: 10px;
+    line-height: 1.4;
+    font-size: 14px;
+}
+
+/* 用户消息（右对齐） */
+.user-msg {
+    background: #409eff;
+    color: #fff;
+    margin-left: auto;
+}
+
+/* AI 消息（左对齐） */
+.bot-msg {
+    background: #e4e7ed;
+    color: #333;
+    margin-right: auto;
+}
+
+/* 输入框区域 */
+#chat-input-area {
+    display: flex;
+    margin-top: 10px;
+    gap: 10px;
+}
+
+#chat-input {
+    flex: 1;
+    height: 38px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    padding: 0 10px;
+    font-size: 14px;
+}
+
+#chat-send-btn {
+    width: 70px;
+    background: #3498db;
+    border: none;
+    color: #fff;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+#chat-send-btn:hover {
+    background: #2980b9;
+}
+
+/* 覆盖后的样式 */
+/* 让 popup-content 允许内部 flex 完整伸展 */
+.popup-content {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 让 ai-chat 能够填满剩余高度 */
+#ai-chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0; /* 关键：允许子元素缩小，否则 overflow 不会生效 */
+}
+
+/* 聊天记录框：固定高度 + 滚动条 */
+#chat-messages {
+    flex: 1;
+    min-height: 0; /* 关键：让 flex 子容器可以被压缩 */
+    overflow-y: auto;
+    padding: 10px;
+    border: 1px solid #dcdcdc;
+    border-radius: 6px;
+    background: #fafafa;
+}
+
+/* 输入区域固定在底部 */
+#chat-input-area {
+    flex-shrink: 0; /* 不被挤压 */
+    display: flex;
+    margin-top: 10px;
+    gap: 10px;
+}
+
+
+</style>
+
 </div>
 
 
