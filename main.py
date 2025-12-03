@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, flash,  jsonify, redirect, url_for, session
 from utils import query, map_student_course, recommed_module
+from utils.dynamic_recommend import DynamicCourseRecommender, to_bar_json, regular_data
 import json
 import time
 import os
@@ -231,40 +232,85 @@ def recommed():
 
 @app.route("/getRecommedData", methods=['GET','POST'])
 def getRecommedData():
+    """
+    使用动态推荐系统获取课程推荐和相似学生推荐
+    每次调用都会重新加载最新数据，确保推荐结果动态更新
+    """
     stu_no = session.get('stu_id')
-    id2Student, id2Course, stuNo2MatId = map_student_course.get_map_student()
-    scoreMatrix = map_student_course.get_matrix(id2Student)
-    """
-    函数，recommedCourse：使用SVD进行课程推荐：
-    返回:(课程1ID， 课程1评分)
-    """
-    topNCourse, topNStudent = recommed_module.recommedCoursePerson(scoreMatrix, stuNo2MatId[stu_no], N=20)
-    """
-    将得到的Course与Person装换为前端图标需要的json格式:
-     {
-        "source": [
-            [2.3, "计算机视觉"],
-            [1.1, "自然语言处理"],
-            [2.4, "高等数学"],
-            [3.1, "线性代数"],
-            [4.7, "计算机网络"],
-            [5.1, "离散数学"]
-        ]
-     }   
-    """
-
-    id2Student = {i:id2Student[i][0] for i in id2Student.keys()}
-    print(id2Student)
-    print(id2Course)
-    courseJson = recommed_module.toBarJson(topNCourse, id2Course)
-    personJson = recommed_module.toBarJson(topNStudent, id2Student)
-    courseJson = recommed_module.regularData(courseJson, 1, 5)
-    personJson = recommed_module.regularData(personJson, 0, 1)
-
-    coursePersonJson = {}
-    coursePersonJson['course'] = courseJson
-    coursePersonJson['person'] = personJson
-    return jsonify(coursePersonJson)
+    
+    if not stu_no:
+        return jsonify({"error": "用户未登录"}), 401
+    
+    try:
+        # 创建推荐器实例（每次调用都创建新实例，确保使用最新数据）
+        recommender = DynamicCourseRecommender()
+        
+        # 获取推荐结果
+        topNCourse, topNStudent, id2Course, id2Student = recommender.get_recommendations(
+            stu_no, 
+            top_n_courses=20, 
+            top_n_students=20
+        )
+        
+        print(f"推荐结果 - 课程数量: {len(topNCourse)}, 学生数量: {len(topNStudent)}")
+        print(f"课程推荐示例: {topNCourse[:3] if topNCourse else '无'}")
+        print(f"学生推荐示例: {topNStudent[:3] if topNStudent else '无'}")
+        
+        # 转换为前端图表需要的JSON格式
+        courseJson = to_bar_json(topNCourse, id2Course)
+        personJson = to_bar_json(topNStudent, id2Student)
+        
+        print(f"转换后的课程JSON: {courseJson}")
+        print(f"转换后的学生JSON: {personJson}")
+        
+        # 如果数据为空，返回空数据但保持格式
+        if not courseJson['source'] or len(courseJson['source']) <= 1:  # 只有列名
+            print("警告: 课程推荐数据为空，可能原因：1. 数据库中没有足够的选课数据 2. 该学生已选完所有课程")
+            # 至少保留列名
+            if len(courseJson['source']) == 0:
+                courseJson['source'] = [["amount", "product"]]
+        
+        if not personJson['source'] or len(personJson['source']) <= 1:  # 只有列名
+            print("警告: 相似学生推荐数据为空")
+            if len(personJson['source']) == 0:
+                personJson['source'] = [["amount", "product"]]
+        
+        # 归一化数据：课程评分归一化到1-5，学生相似度归一化到0-1
+        if len(courseJson['source']) > 1:  # 有数据才归一化
+            courseJson = regular_data(courseJson, 1, 5)
+            print(f"归一化后的课程JSON: {courseJson}")
+        if len(personJson['source']) > 1:  # 有数据才归一化
+            personJson = regular_data(personJson, 0, 1)
+            print(f"归一化后的学生JSON: {personJson}")
+        
+        coursePersonJson = {}
+        coursePersonJson['course'] = courseJson
+        coursePersonJson['person'] = personJson
+        
+        print(f"最终返回的JSON: {coursePersonJson}")
+        
+        return jsonify(coursePersonJson)
+    
+    except Exception as e:
+        print(f"推荐系统错误: {str(e)}")
+        # 如果新系统出错，回退到原有系统
+        try:
+            id2Student, id2Course, stuNo2MatId = map_student_course.get_map_student()
+            scoreMatrix = map_student_course.get_matrix(id2Student)
+            topNCourse, topNStudent = recommed_module.recommedCoursePerson(
+                scoreMatrix, stuNo2MatId[stu_no], N=20
+            )
+            id2Student = {i:id2Student[i][0] for i in id2Student.keys()}
+            courseJson = recommed_module.toBarJson(topNCourse, id2Course)
+            personJson = recommed_module.toBarJson(topNStudent, id2Student)
+            courseJson = recommed_module.regularData(courseJson, 1, 5)
+            personJson = recommed_module.regularData(personJson, 0, 1)
+            coursePersonJson = {}
+            coursePersonJson['course'] = courseJson
+            coursePersonJson['person'] = personJson
+            return jsonify(coursePersonJson)
+        except Exception as e2:
+            return jsonify({"error": f"推荐系统错误: {str(e2)}"}), 500
 
 @app.route('/personal_information', methods=['GET', 'POST'])
 def personal_information():
