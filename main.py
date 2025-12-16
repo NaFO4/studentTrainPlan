@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, flash,  jsonify, redirect, url_for, session
-from utils import query, map_student_course, recommed_module
+from utils import query, map_student_course, recommed_module, broadcast
 from utils.dynamic_recommend import DynamicCourseRecommender, to_bar_json, regular_data
 from utils.course_selection import (
     get_available_elective_courses, 
@@ -404,48 +404,16 @@ def submit_train_place():
     train_plan = twoData['tree']
     scores = twoData['scores']
 
-    #train_plan['name'] = "数据转换成功"
-    print('反馈回来的数据是：')
-    print(train_plan)
-    data = train_plan['children']
-    array_finish = [0]*120
-    #print(array_finish)
-    for data_children in data:
-        data_children = data_children['children']
-        #print(data_children)
-        for data_children_child_1 in data_children:
-            #print('data_children_child', data_children_child)
-            data_children_child_1 = data_children_child_1['children']
-            for data_children_child in data_children_child_1:
-                name = data_children_child['children'][0]['name']
-                color = data_children_child['children'][0]['itemStyle']['borderColor']
-                #print(name, color)
-                sql = "select CO_100 from education_plan WHERE CO_NAME='%s'" % name
-                co_100 = query.query(sql)
-                co_100 = co_100[0][0]
-
-                if color == 'red':
-                    array_finish[int(co_100)] = 0
-                else:
-                    array_finish[int(co_100)] = 1
-    finish_co = ''
-    for i in range(1, 119):
-        if array_finish[i] == 1:
-            finish_co += '1'
-        else:
-            finish_co += '0'
-    print(finish_co)
-    #print(array_finish)
-
+    # 更新数据库
     stu_id = session.get('stu_id')
     query.updateDatabase(stu_id, train_plan)
     query.updateScore(stu_id, scores)
 
-    """功能2："""
-    train_plan_str = json.dumps(train_plan)
-    train_plan_str = train_plan_str.replace("yellow", "green")
-    train_plan = json.loads(train_plan_str)
-    return jsonify(train_plan)
+    # 重新获取最新的计划树数据（包含最新的分数和状态）
+    # 这样可以确保前端展示的数据与数据库完全一致
+    new_train_plan = query.getPlanTreeJson(stu_id)
+    
+    return jsonify(new_train_plan)
 
 
 @app.route('/api/deepseek_chat', methods=['POST'])
@@ -575,6 +543,42 @@ def api_get_course_statistics():
         })
     
     return jsonify(result)
+
+
+@app.route('/inbox', methods=['GET'])
+def inbox():
+    """
+    消息中心
+    """
+    result = broadcast.handle_inbox_request(request, session, query)
+    
+    if result.get('status') == 'success':
+        return render_template(result['template'], messages=result['messages'])
+    else:
+        # 如果出错，重定向到登录页或显示错误
+        if result.get('message') == '无效用户':
+            return redirect(url_for('index'))
+        return result.get('message')
+
+
+@app.route('/managerBroadcast', methods=['GET', 'POST'])
+def managerBroadcast():
+    """
+    管理员发布公告
+    """
+    result = broadcast.handle_broadcast_request(request, session, query)
+    
+    if result.get('status') == 'success':
+        return render_template(result['template'], 
+                             students=result.get('students'),
+                             colleges=result.get('colleges'),
+                             majors=result.get('majors'))
+    elif result.get('status') == 'redirect':
+        flash(result.get('message'), 'success')
+        return redirect(result.get('url'))
+    else:
+        flash(result.get('message'), 'error')
+        return redirect(url_for('manager'))
 
 
 if __name__ == '__main__':

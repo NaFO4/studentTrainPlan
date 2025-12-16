@@ -98,6 +98,95 @@ $.getJSON('/get_info', function(data)
         ]
     });
 
+    // 计算并更新进度条
+    updateProgressBar(data);
+});
+
+// 递归计算节点的完成情况
+function calculateProgress(node) {
+    var total = 0;
+    var finished = 0;
+
+    if (node.children) {
+        for (var i = 0; i < node.children.length; i++) {
+            var result = calculateProgress(node.children[i]);
+            total += result.total;
+            finished += result.finished;
+        }
+    } else {
+        // 叶子节点，检查是否为课程节点
+        if (node.value) { // 假设有 value 属性的是课程节点
+            total = 1;
+            // 绿色或黄色视为已完成/进行中（根据业务逻辑调整，这里假设非红色即算进度）
+            if (node.itemStyle && node.itemStyle.borderColor !== 'red') {
+                finished = 1;
+            }
+        }
+    }
+    return { total: total, finished: finished };
+}
+
+// 更新进度条 UI
+function updateProgressBar(data) {
+    // 映射类别名称到 DOM ID 后缀
+    var categoryMap = {
+        '总进度': '1',
+        '思想政治理论': '2',
+        '外语': '3',
+        '文化素质教育必修': '4',
+        '体育': '5',
+        '军事': '6',
+        '健康教育': '7',
+        '数学': '8',
+        '物理': '9',
+        '计算机': '10',
+        '学科基础': '11',
+        '专业选修': '12'
+    };
+
+    // 1. 计算总进度
+    var totalResult = calculateProgress(data);
+    updateSingleProgress('1', totalResult);
+
+    // 2. 计算各分类进度
+    if (data.children) {
+        for (var i = 0; i < data.children.length; i++) {
+            var categoryNode = data.children[i];
+            var categoryName = categoryNode.name;
+            var suffix = categoryMap[categoryName];
+            
+            if (suffix) {
+                var result = calculateProgress(categoryNode);
+                updateSingleProgress(suffix, result);
+            }
+        }
+    }
+}
+
+function updateSingleProgress(suffix, result) {
+    var percent = 0;
+    if (result.total > 0) {
+        percent = Math.round((result.finished / result.total) * 100);
+    }
+    
+    // 更新文本
+    var textElem = document.getElementById('on' + suffix);
+    if (textElem) {
+        textElem.innerText = percent + '%';
+    }
+    
+    // 更新进度条宽度
+    // 注意：原 HTML 结构是 .process-parentX -> .progress-bar
+    var parentElem = document.querySelector('.process-parent' + suffix);
+    if (parentElem) {
+        var progressBar = parentElem.querySelector('.bg-success');
+        if (progressBar) {
+            progressBar.style.width = percent + '%';
+        }
+    }
+}
+
+
 });
 //----------------------------------------------------------------//
 

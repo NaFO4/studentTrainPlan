@@ -23,6 +23,12 @@ function submit(){
                 }]
             })
             originTrainPlain = data;
+            // 更新进度条
+            if (typeof updateProgressBar === 'function') {
+                updateProgressBar(data);
+            }
+            // 更新评分下拉框
+            initScore();
         }
     })
 }
@@ -76,13 +82,19 @@ function dfsScore(Node){
     下拉框3：score
  */
 
-
-setTimeout(function initScore(){
-    console.log("111");
+function initScore(){
+    console.log("initScore called");
     var allScore = ['1', '2', "3", '4', '5'];
     var courseScore = [];
     var courseName = [];
     var allSubject = [];
+    
+    // 确保 myChart 已初始化
+    if (typeof myChart === 'undefined' || !myChart.getOption()) {
+        console.log("Chart not ready yet");
+        return;
+    }
+
     Tree = myChart.getOption()['series'][0]['data'][0];
     for(var idx=0; idx<Tree['children'].length; idx++) {
         var subName = Tree['children'][idx]['name'];
@@ -107,10 +119,16 @@ setTimeout(function initScore(){
         $("#domain").append($("<option></option>").val(idx + 1).html(allSubject[idx]));
     }
 
+    // 解绑旧事件，防止重复绑定
+    $("#domain").off("change");
+    $("#course").off("change");
+
     $("#domain").change(function(){
         document.getElementById("course").length=0;
         $("#course").append($("<option></option>").val(0).html("课程"));
         var index = $(this).val()-1;
+        if (index < 0) return; // 处理选择了“课程类别”的情况
+        
         for(var i = 0; i < courseName[index].length; i++) {
             if(courseScore[index][i] == 0+""){
                 $("#course").append($("<option></option>").val(i + 1).html(courseName[index][i]));
@@ -121,27 +139,30 @@ setTimeout(function initScore(){
         }
     })
     $("#course").change(function(){
-        document.getElementById("score").length=0;
+        // document.getElementById("score").length=0; // No longer a select
         var domainSelect = document.getElementById("domain");
         var domainIndex = domainSelect.selectedIndex-1;
         console.log(domainIndex)
         var courseIndex = $(this).val() - 1;
         console.log(courseIndex)
+        
+        if (domainIndex < 0 || courseIndex < 0) return;
+
         if(courseScore[domainIndex][courseIndex] == 0+""){
-            $("#score").append($("<option></option>").val(0).html("请评分:"));
-            for(var s=1; s<=5; s++){
-                $("#score").append($("<option></option>").val(s).html(s));
-            }
+            $("#score").val("");
+            $("#score").attr("placeholder", "请输入分数(1-5)");
             $("#btnScore").attr('disabled',false);
             $("#score").attr("disabled", false);
         }
         else{
-            $("#score").append($("<option></option>").val(0).html("已评分:"+ courseScore[domainIndex][courseIndex]));
+            $("#score").val(courseScore[domainIndex][courseIndex]);
             $("#btnScore").attr('disabled',true);
             $("#score").attr("disabled",true);
         }
     })
-}, 3000)
+}
+
+setTimeout(initScore, 3000)
 
 // -------------------------------------------------------------------//
 // --------------------------------------------------- //
@@ -154,11 +175,18 @@ setTimeout(function initScore(){
 function updataScore(){
     var domCourse = document.getElementById("course")
     var courseName = domCourse[domCourse.selectedIndex].text;
-    var domScore =  document.getElementById("score");
-    course2score[courseName] = parseInt(domScore[domScore.selectedIndex].text);
+    
+    var scoreInput = $("#score").val();
+    
+    // 验证输入
+    if(!scoreInput || isNaN(scoreInput) || parseInt(scoreInput) < 1 || parseInt(scoreInput) > 5){
+        alert("请输入有效的整数分数 (1-5)");
+        return;
+    }
+    
+    course2score[courseName] = parseInt(scoreInput);
     alert("评分成功")
-    domScore.length=0;
-    $("#score").append($("<option></option>").val(0).html("已评分:"+ course2score[courseName]));
+    
     $("#score").attr("disabled",true);
     $("#btnScore").attr('disabled',true);
 }
