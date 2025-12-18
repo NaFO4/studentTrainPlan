@@ -581,6 +581,68 @@ def managerBroadcast():
         return redirect(url_for('manager'))
 
 
+@app.route('/api/get_progress', methods=['GET'])
+def api_get_progress():
+    """
+    API: 获取学生的课程进度数据
+    """
+    stu_no = session.get('stu_id')
+    if not stu_no:
+        return jsonify({"success": False, "message": "用户未登录"}), 401
+        
+    try:
+        progress_data = query.get_student_progress(stu_no)
+        return jsonify({"success": True, "data": progress_data})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "message": f"获取进度失败: {str(e)}"}), 500
+
+
+@app.route('/api/get_course_categories', methods=['GET'])
+def api_get_course_categories():
+    try:
+        categories = query.get_course_categories()
+        return jsonify({"success": True, "data": categories})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route('/api/get_courses_by_category', methods=['GET'])
+def api_get_courses_by_category():
+    category = request.args.get('category')
+    if not category:
+        return jsonify({"success": False, "message": "Category is required"}), 400
+    try:
+        courses = query.get_courses_by_category(category)
+        return jsonify({"success": True, "data": courses})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route('/api/submit_course_score', methods=['POST'])
+def api_submit_course_score():
+    stu_no = session.get('stu_id')
+    if not stu_no:
+        return jsonify({"success": False, "message": "用户未登录"}), 401
+        
+    data = request.get_json()
+    co_no = data.get('co_no')
+    score = data.get('score')
+    
+    if not co_no or not score:
+        return jsonify({"success": False, "message": "参数不完整"}), 400
+        
+    try:
+        success, message = query.submit_course_score(stu_no, co_no, score)
+        if success:
+            return jsonify({"success": True, "message": message})
+        else:
+            return jsonify({"success": False, "message": message}), 400
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 if __name__ == '__main__':
     app.run("0.0.0.0", debug=True)
 

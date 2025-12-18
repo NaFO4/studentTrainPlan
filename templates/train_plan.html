@@ -175,17 +175,17 @@
 
             <ul class="info_news_text info_news_text2">
                 <select id="domain" style="width:220px; height: 40px">
-                    <option selected="selected">课程类别</option>
+                    <option value="">课程类别</option>
                 </select>
                 <p></p>
                 <select id="course" style="width:220px; height: 40px">
-                    <option selected="selected">课程</option>
+                    <option value="">课程</option>
                 </select>
                 <p></p>
                 <input type="text" id="score" placeholder="请输入分数(1-5)" style="width:220px; height: 40px; padding-left: 10px;">
                 <p></p>
                 <div class="scoreConfirm"  style="width:220px; height: 40px">
-                    <input type="reset" id='btnScore' onclick="updataScore()" name="score" value="确定评分">
+                    <input type="button" id='btnScore' value="确定评分">
                 </div>
             </ul>
 
@@ -195,6 +195,141 @@
                     $(this).click(function(){
                         $(this).addClass("on").siblings("p").removeClass("on");
                         $(".info_news_text").hide(400).eq(n).show(500);
+                    });
+                });
+
+                // 获取并更新进度数据
+                $(document).ready(function() {
+                    // 加载课程分类
+                    $.ajax({
+                        url: "/api/get_course_categories",
+                        type: "GET",
+                        success: function(response) {
+                            if (response.success) {
+                                var domainSelect = $("#domain");
+                                $.each(response.data, function(index, category) {
+                                    domainSelect.append($("<option></option>").attr("value", category).text(category));
+                                });
+                            }
+                        }
+                    });
+
+                    // 监听分类选择变化
+                    $("#domain").change(function() {
+                        var category = $(this).val();
+                        var courseSelect = $("#course");
+                        courseSelect.empty();
+                        courseSelect.append($("<option></option>").attr("value", "").text("课程"));
+                        
+                        if (category) {
+                            $.ajax({
+                                url: "/api/get_courses_by_category",
+                                type: "GET",
+                                data: { category: category },
+                                success: function(response) {
+                                    if (response.success) {
+                                        $.each(response.data, function(index, course) {
+                                            courseSelect.append($("<option></option>").attr("value", course.co_no).text(course.co_name));
+                                        });
+                                    }
+                                }
+                            });
+                        }
+                    });
+
+                    // 提交评分
+                    $("#btnScore").click(function() {
+                        var co_no = $("#course").val();
+                        var score = $("#score").val();
+                        
+                        if (!co_no) {
+                            alert("请选择课程");
+                            return;
+                        }
+                        if (!score) {
+                            alert("请输入分数");
+                            return;
+                        }
+                        // 简单的分数验证 1-5
+                        if (isNaN(score) || score < 1 || score > 5) {
+                            alert("请输入1-5之间的有效分数");
+                            return;
+                        }
+
+                        $.ajax({
+                            url: "/api/submit_course_score",
+                            type: "POST",
+                            contentType: "application/json",
+                            data: JSON.stringify({ co_no: co_no, score: score }),
+                            success: function(response) {
+                                if (response.success) {
+                                    alert("评分成功！");
+                                    // 可以在这里清空输入或刷新进度等
+                                    $("#score").val("");
+                                } else {
+                                    alert("评分失败: " + response.message);
+                                }
+                            },
+                            error: function(xhr) {
+                                var msg = "请求失败";
+                                if (xhr.responseJSON && xhr.responseJSON.message) {
+                                    msg = xhr.responseJSON.message;
+                                }
+                                alert(msg);
+                            }
+                        });
+                    });
+
+                    // 加载进度条数据
+                    $.ajax({
+                        url: "/api/get_progress",
+                        type: "GET",
+                        success: function(response) {
+                            if (response.success && response.data) {
+                                var data = response.data;
+                                
+                                // 定义前端显示的分类名称与HTML中class的映射关系（或者直接遍历）
+                                // 观察HTML结构：
+                                // 总进度: .info1, .process-parent1
+                                // 思想政治: .info2, .process-parent2
+                                // 外语: .info3, .process-parent3
+                                // ...
+                                
+                                var categoryMap = {
+                                    '总进度': 1,
+                                    '思想政治': 2,
+                                    '外语': 3,
+                                    '文化素质': 4,
+                                    '体育': 5,
+                                    '军事': 6,
+                                    '健康教育': 7,
+                                    '数学': 8,
+                                    '物理': 9,
+                                    '计算机': 10,
+                                    '学科基础': 11,
+                                    '专业选修': 12
+                                };
+                                
+                                for (var key in data) {
+                                    if (categoryMap.hasOwnProperty(key)) {
+                                        var index = categoryMap[key];
+                                        var percentage = data[key].percentage;
+                                        var text = percentage + "%";
+                                        
+                                        // 更新进度条宽度
+                                        $(".process-parent" + index + " .progress-bar.bg-success").css("width", percentage + "%");
+                                        
+                                        // 更新文本
+                                        $("#on" + index).text(text);
+                                    }
+                                }
+                            } else {
+                                console.error("获取进度数据失败:", response.message);
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            console.error("请求失败:", error);
+                        }
                     });
                 });
             </script>

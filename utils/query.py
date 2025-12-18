@@ -548,3 +548,164 @@ def updateScore(stu_id, scores):
         sql="UPDATE CHOOSE SET COMMENT='%d' WHERE STU_NO='%s' AND CO_NO='%s'" % (scores[cur], stu_id, name2no[cur])
         #print(sql)
         update(sql)
+
+
+def get_student_progress(stu_id):
+    """
+    功能: 计算学生的课程进度
+    :param stu_id: 学生ID
+    :return: 包含各分类进度信息的字典
+    """
+    # 1. 获取已完成课程掩码
+    sql = "select FINISHED_CO from EDU_STU_PLAN WHERE STU_NO='%s'" % stu_id
+    result = query(sql)
+    if not result:
+        return {}
+    finished_co_str = result[0][0] # e.g. "10110..."
+    
+    # 2. 获取所有课程信息
+    sql = "select CO_100, CLASSIFICATION, CREDITS from EDUCATION_PLAN"
+    all_courses = query(sql)
+    
+    # 构建课程字典: co_100 -> (classification, credits)
+    course_map = {}
+    for row in all_courses:
+        try:
+            co_100 = int(row[0])
+            classification = row[1]
+            credits = float(row[2]) if row[2] else 0.0
+            course_map[co_100] = {'class': classification, 'credits': credits}
+        except:
+            continue
+        
+    # 3. 统计已完成学分
+    finished_credits = {
+        '思想政治理论': 0.0,
+        '外语': 0.0,
+        '文化素质教育必修': 0.0,
+        '体育': 0.0,
+        '军事': 0.0,
+        '健康教育': 0.0,
+        '数学': 0.0,
+        '物理': 0.0,
+        '计算机': 0.0,
+        '学科基础': 0.0,
+        '专业选修': 0.0
+    }
+    
+    # finished_co_str[0] 对应 CO_100=1
+    for i, status in enumerate(finished_co_str):
+        co_100 = i + 1
+        if status == '1':
+            if co_100 in course_map:
+                cls = course_map[co_100]['class']
+                if cls in finished_credits:
+                    finished_credits[cls] += course_map[co_100]['credits']
+                # 兼容可能的分类名称差异
+                elif cls == '文化素质教育':
+                     finished_credits['文化素质教育必修'] += course_map[co_100]['credits']
+
+    # 4. 构建结果
+    # 硬编码总学分 (参考 getPlanTreeJson 中的 values)
+    total_credits_map = {
+        '思想政治理论': 16,
+        '外语': 8,
+        '文化素质教育必修': 5.5,
+        '体育': 4,
+        '军事': 5,
+        '健康教育': 0.5,
+        '数学': 21.5,
+        '物理': 9,
+        '计算机': 4.0,
+        '学科基础': 24.5,
+        '专业选修': 21.5
+    }
+    
+    # 前端显示的名称映射
+    display_name_map = {
+        '思想政治理论': '思想政治',
+        '外语': '外语',
+        '文化素质教育必修': '文化素质',
+        '体育': '体育',
+        '军事': '军事',
+        '健康教育': '健康教育',
+        '数学': '数学',
+        '物理': '物理',
+        '计算机': '计算机',
+        '学科基础': '学科基础',
+        '专业选修': '专业选修'
+    }
+    
+    progress_data = {}
+    
+    # 计算总进度
+    total_required = sum(total_credits_map.values())
+    total_finished = sum(finished_credits.values())
+    
+    # 确保总进度不超过100%（如果有额外选修）
+    total_percentage = min(100, round(total_finished / total_required * 100, 1)) if total_required > 0 else 0
+    
+    progress_data['总进度'] = {
+        'finished': round(total_finished, 1),
+        'total': total_required,
+        'percentage': total_percentage
+    }
+    
+    for key, total in total_credits_map.items():
+        finished = finished_credits.get(key, 0)
+        display_name = display_name_map.get(key, key)
+        percentage = min(100, round(finished / total * 100, 1)) if total > 0 else 0
+        
+        progress_data[display_name] = {
+            'finished': round(finished, 1),
+            'total': total,
+            'percentage': percentage
+        }
+        
+    return progress_data
+
+
+def get_course_categories():
+    """
+    功能: 获取所有课程分类
+    """
+    sql = "SELECT DISTINCT CLASSIFICATION FROM EDUCATION_PLAN WHERE CLASSIFICATION IS NOT NULL"
+    result = query(sql)
+    categories = [row[0] for row in result]
+    return categories
+
+
+def get_courses_by_category(category):
+    """
+    功能: 根据分类获取课程列表
+    """
+    sql = "SELECT CO_NO, CO_NAME FROM EDUCATION_PLAN WHERE CLASSIFICATION = '%s'" % category
+    result = query(sql)
+    courses = [{'co_no': row[0], 'co_name': row[1]} for row in result]
+    return courses
+
+
+def submit_course_score(stu_id, co_no, score):
+    """
+    功能: 提交课程评分 (更新 CHOOSE 表中的 COMMENT 字段作为评分字段使用，或者更新 GRADE，这里根据原代码逻辑似乎是 COMMENT 用作评分？原代码有 updateScore 函数是用 COMMENT 存分数的)
+    注意：原 updateScore 函数逻辑是：UPDATE CHOOSE SET COMMENT='%d' ...
+    所以这里我们继续使用 COMMENT 字段存储评分 (1-5分)
+    """
+    # 检查是否选过这门课
+    sql_check = "SELECT * FROM CHOOSE WHERE STU_NO='%s' AND CO_NO='%s'" % (stu_id, co_no)
+    result = query(sql_check)
+    
+    if not result:
+        # 如果没选过，可能需要先插入一条记录，或者报错。
+        # 根据业务逻辑，评分通常是针对已选修的课程。
+        # 这里为了简单起见，如果没记录则插入一条（假设是补录）或者返回错误。
+        # 考虑到是“评分”，应该是已完成的课程。
+        return False, "未找到该课程的选课记录"
+    
+    # 更新评分
+    sql_update = "UPDATE CHOOSE SET COMMENT='%s' WHERE STU_NO='%s' AND CO_NO='%s'" % (score, stu_id, co_no)
+    try:
+        update(sql_update)
+        return True, "评分成功"
+    except Exception as e:
+        return False, str(e)
